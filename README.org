@@ -1,0 +1,122 @@
+#+BABEL: :exports code :comments org
+
+* Tests of GP-GPU programming
+
+** Running the tests
+#+begin_src sh :results output :exports both
+  for test in tangle/*test.py; do
+      echo 
+      echo "----------------------------------------------------------------"
+      echo $test ---- $(date)
+      echo 
+      time python $test
+  done
+#+end_src
+
+#+results:
+: 
+: ----------------------------------------------------------------
+: tangle/3d-fft-test.py ---- Fri Nov 26 23:43:08 CST 2010
+: 
+: Testing fft/ifft..
+: Success status:  True
+: Success status:  True
+
+** FFTs using scikits.cuda
+
+The demo program =fft_demo.py= in the scikits.cuda distribution is for
+one-d transforms, but the docs of src_python{scikits.cuda.fft()} say that it works for up to three-d, so let's try that first. 
+
+And let's do it all with literate programming via org-babel!
+
+*** 3D FFT test
+    :PROPERTIES:
+    :tangle:   tangle/3d-fft-test.py
+    :END:
+
++ This is only lightly modified from [[file:~/Source/scikits.cuda/demos/fft_demo.py][scikits.cuda/demos/fft_demo.py]]
++ The only change is to make the arrays 3-dimensional, rather than 1-dimensional
+#+begin_src python
+"""
+Demonstrates how to use PyCUDA interface to CUFFT for 3D arrays.
+"""
+#+end_src
+
+**** Import modules
+#+begin_src python
+  import pycuda.autoinit
+  import pycuda.gpuarray as gpuarray
+  import numpy as np
+  
+  import scikits.cuda.fft as cu_fft
+#+end_src
+
+**** Set up source array in space domain
+#+begin_src python
+  print 'Testing fft/ifft..'
+  nx, ny, nz = 128, 128, 128
+  
+  x = np.random.rand(nx, ny, nz).astype(np.float32)
+#+end_src
+
+**** Transfer to fourier domain and back with standard numpy
+#+begin_src python
+  xf = np.fft.fft(x)
+  y = np.real(np.fft.ifft(xf))
+#+end_src
+
+**** Do the same but using CUDA
+
+***** Forward transform with CUDA
++ Need to pre-allocate the array to hold the transform
+#+begin_src python  
+  x_gpu = gpuarray.to_gpu(x)
+  xf_gpu = gpuarray.empty((nx/2+1, ny, nz), np.complex64)
+  plan_forward = cu_fft.Plan(x_gpu.shape, np.float32, np.complex64)
+  cu_fft.fft(x_gpu, xf_gpu, plan_forward)
+#+end_src
+
+***** Backward transform with CUDA
+#+begin_src python  
+  y_gpu = gpuarray.empty_like(x_gpu)
+  plan_inverse = cu_fft.Plan(x_gpu.shape, np.complex64, np.float32)
+  cu_fft.ifft(xf_gpu, y_gpu, plan_inverse, True)
+#+end_src
+
+**** Test that we get the same results from numpy and CUDA
+#+begin_src python
+  print 'Success status: ', np.allclose(x, x_gpu.get(), atol=1e-6)
+  print 'Success status: ', np.allclose(y, y_gpu.get(), atol=1e-6)
+#+end_src
+
+* COMMENT Org babel test
+  :PROPERTIES:
+  :tangle:   tangle/simple.py
+  :END:
+
+** Import modules from standard library
+#+begin_src python
+  import sys
+#+end_src
+
+** Write out path to program and arguments
+#+begin_src python
+  print sys.argv
+#+end_src
+
+* COMMENT Export options
+#+TITLE:     README.org
+#+AUTHOR:    William Henney
+#+EMAIL:     w.henney@crya.unam.mx
+#+DATE:      2010-11-26 Fri
+#+DESCRIPTION: 
+#+KEYWORDS: 
+#+LANGUAGE:  en
+#+OPTIONS:   H:6 num:t toc:nil \n:nil @:t ::t |:t ^:{} -:t f:t *:t <:t
+#+OPTIONS:   TeX:t LaTeX:t skip:nil d:nil todo:t pri:nil tags:not-in-toc
+#+INFOJS_OPT: view:nil toc:nil ltoc:t mouse:underline buttons:0 path:http://orgmode.org/org-info.js
+#+EXPORT_SELECT_TAGS: export
+#+EXPORT_EXCLUDE_TAGS: noexport
+#+LINK_UP:   
+#+LINK_HOME: 
+#+XSLT: 
